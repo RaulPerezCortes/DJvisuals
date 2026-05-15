@@ -1,0 +1,9 @@
+node_modules/
+dist/
+
+# Local env and editor noise
+.env
+.env.*
+*.local
+.DS_Store
+Thumbs.db
