@@ -12,7 +12,10 @@ import type { VisualScene } from '../visuals/VisualTypes';
 interface EngineOptions {
   canvas: HTMLCanvasElement;
   analyzer: AudioAnalyzer;
+  enableGui?: boolean;
+  getAudioFeatures?: () => AudioFeatures;
   onSettingsChange?: (settings: EngineSettings) => void;
+  onOpenOutput?: () => void;
 }
 
 export class VisualEngineCore {
@@ -50,7 +53,7 @@ export class VisualEngineCore {
     this.renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
       antialias: false,
-      alpha: false,
+      alpha: true,
       powerPreference: 'high-performance',
       stencil: false,
       depth: true,
@@ -72,7 +75,7 @@ export class VisualEngineCore {
     });
     this.attachAudioEvents();
     this.options.analyzer.setSensitivity(this.settings.audioSensitivity);
-    this.initGui();
+    if (this.options.enableGui !== false) this.initGui();
     void this.initMidi();
     this.setScene(this.settings.sceneId);
     this.resize();
@@ -85,10 +88,10 @@ export class VisualEngineCore {
       if (this.disposed) return;
       this.frame = requestAnimationFrame(loop);
       const delta = Math.min(this.clock.getDelta(), 0.05);
-      const audio = this.options.analyzer.current;
+      const audio = this.options.getAudioFeatures?.() ?? this.options.analyzer.current;
       this.visualTime += this.computeVisualDelta(delta, audio);
       this.updateReadout(audio);
-      this.renderer.setClearColor(this.settings.backgroundColor, 1);
+      this.renderer.setClearColor(this.settings.backgroundColor, this.settings.textLayer === 'back' ? 0 : 1);
       this.active?.update(delta, this.visualTime, audio, this.settings);
       this.pipeline.update(this.settings, audio.energy);
       this.pipeline.render(delta);
@@ -109,9 +112,14 @@ export class VisualEngineCore {
   }
 
   setSettings(patch: Partial<EngineSettings>): void {
+    const sceneId = patch.sceneId;
     Object.assign(this.settings, patch);
     if (patch.audioSensitivity !== undefined) {
       this.options.analyzer.setSensitivity(patch.audioSensitivity);
+    }
+    if (sceneId && sceneId !== this.active?.id) {
+      this.setScene(sceneId);
+      return;
     }
     this.resize();
     this.options.onSettingsChange?.(this.settings);
@@ -160,20 +168,19 @@ export class VisualEngineCore {
     });
 
     const audioControls = {
-      refreshMics: () => void this.refreshAudioInputs(),
-      mic: () => void this.options.analyzer.startMicrophone(this.settings.audioInputId),
+      systemAudio: () => void this.options.analyzer.startSystemAudio(),
       roomMic: () => void this.options.analyzer.startRoomMicrophone(this.settings.audioInputId),
       fullscreen: () => void this.toggleFullscreen(),
+      openOutput: () => this.options.onOpenOutput?.(),
     };
 
     const audio = this.gui.addFolder('Audio');
-    audio.add(audioControls, 'refreshMics').name('Refresh mics');
+    audio.add(audioControls, 'systemAudio').name('Audio ordenador');
     this.micDeviceController = audio
       .add(this.settings, 'audioInputId', this.micDeviceOptions)
-      .name('input') as unknown as { options: (options: Record<string, string>) => unknown; updateDisplay: () => unknown };
-    audio.add(audioControls, 'mic').name('Mic');
-    audio.add(audioControls, 'roomMic').name('Mic externo');
-    audio.add(this.settings, 'audioSensitivity', 0.5, 8, 0.1).name('sensitivity');
+      .name('micro input') as unknown as { options: (options: Record<string, string>) => unknown; updateDisplay: () => unknown };
+    audio.add(audioControls, 'roomMic').name('Audio micro');
+    audio.add(this.settings, 'audioSensitivity', 0.001, 24, 0.001).name('sensitivity');
     audio.add(this.audioReadout, 'source').name('source').listen().disable();
     audio.add(this.audioReadout, 'volume', 0, 1, 0.01).name('volume').listen().disable();
     audio.add(this.audioReadout, 'bass', 0, 1, 0.01).name('bass').listen().disable();
@@ -188,6 +195,7 @@ export class VisualEngineCore {
     visual.add(this.settings, 'intensity', 0.1, 2.5, 0.01);
     visual.add(this.settings, 'speed', 0.1, 3, 0.01);
     visual.add(this.settings, 'pixelRatioCap', 0.75, 2, 0.05).name('pixel cap').onChange(() => this.resize());
+    visual.add(audioControls, 'openOutput').name('Abrir salida');
     visual.add(audioControls, 'fullscreen').name('Fullscreen');
 
     const colors = this.gui.addFolder('Colors');
@@ -202,6 +210,12 @@ export class VisualEngineCore {
     text.addColor(this.settings, 'textGlowColor').name('glow');
     text.add(this.settings, 'textSize', 0.35, 1.8, 0.01).name('size');
     text.add(this.settings, 'textOpacity', 0, 1, 0.01).name('opacity');
+    text.add(this.settings, 'textX', 0, 100, 0.1).name('x');
+    text.add(this.settings, 'textY', 0, 100, 0.1).name('y');
+    text.add(this.settings, 'textMotionAmount', 0, 35, 0.1).name('motion');
+    text.add(this.settings, 'textMotionSpeed', 0.05, 5, 0.05).name('motion speed');
+    text.add(this.settings, 'textAudioMotion').name('audio motion');
+    text.add(this.settings, 'textLayer', { encima: 'front', detras: 'back' }).name('layer');
 
     const fx = this.gui.addFolder('FX');
     fx.add(this.settings, 'bloom', 0, 2, 0.01);

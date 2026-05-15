@@ -9,7 +9,9 @@ npm install
 npm run dev
 ```
 
-Open the local Vite URL, press `Demo` for synthesized audio or `Mic` to capture live input. Browser microphone capture requires HTTPS or localhost.
+Open the local Vite URL. In the Audio panel, use `Audio ordenador` to capture the computer/tab audio, or `Audio micro` to capture a physical microphone. Browser audio capture requires HTTPS or localhost.
+
+For projection, use `Abrir salida` in the Visual panel. It opens a clean output tab at `?output=1`; keep the original tab as the controller and press `F` in the output tab if you want it fullscreen.
 
 ## Build
 

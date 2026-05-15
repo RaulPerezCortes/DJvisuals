@@ -7,7 +7,7 @@ const HISTORY_WINDOW = 90;
 const MIN_BEAT_INTERVAL = 0.24;
 const BPM_MIN = 70;
 const BPM_MAX = 180;
-const SILENCE_GATE = 0.018;
+const DIRECT_SILENCE_GATE = 0.012;
 
 const emptyBands = (): FrequencyBands => ({
   sub: 0,
@@ -69,6 +69,7 @@ export class AudioAnalyzer {
   private inputProfileGain = 1;
   private rmsFloor = 0.002;
   private rmsPeak = 0.06;
+  private rawRms = 0;
 
   get state(): AudioSourceState {
     return this.sourceState;
@@ -79,7 +80,7 @@ export class AudioAnalyzer {
   }
 
   setSensitivity(value: number): void {
-    this.inputSensitivity = Math.max(0.5, Math.min(8, value));
+    this.inputSensitivity = Math.max(0.001, Math.min(24, value));
   }
 
   async getAudioInputs(): Promise<Array<{ id: string; label: string }>> {
@@ -105,13 +106,13 @@ export class AudioAnalyzer {
     this.stopSource();
     try {
       this.resetCalibration();
-      this.inputProfileGain = 1.8;
+      this.inputProfileGain = 1;
       const context = await this.ensureContext();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: deviceId === 'default' ? undefined : { exact: deviceId },
-          echoCancellation: false,
-          noiseSuppression: false,
+          echoCancellation: true,
+          noiseSuppression: true,
           autoGainControl: false,
         },
         video: false,
@@ -135,13 +136,13 @@ export class AudioAnalyzer {
     this.stopSource();
     try {
       this.resetCalibration();
-      this.inputProfileGain = 2.15;
+      this.inputProfileGain = 1.08;
       const context = await this.ensureContext();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: deviceId === 'default' ? undefined : { exact: deviceId },
           echoCancellation: false,
-          noiseSuppression: false,
+          noiseSuppression: true,
           autoGainControl: false,
           channelCount: 1,
           sampleRate: { ideal: 48000 },
@@ -277,14 +278,15 @@ export class AudioAnalyzer {
 
     const volume = this.computeRms(this.timeData);
     const measuredBands = this.computeBands(this.frequencyData);
-    const silent = volume < SILENCE_GATE;
+    const silent = this.isSilent(volume);
+    const gatedVolume = silent ? 0 : volume;
     const bands = silent ? emptyBands() : measuredBands;
     const roomMode = this.sourceState.mode === 'room-microphone';
     const energy = silent
       ? 0
       : roomMode
-        ? clamp01(volume * 0.56 + bands.bass * 0.5 + bands.mid * 0.2 + bands.treble * 0.14)
-        : clamp01(volume * 1.45 + bands.bass * 0.62 + bands.mid * 0.22 + bands.treble * 0.18);
+        ? clamp01(gatedVolume * 0.42 + bands.bass * 0.4 + bands.mid * 0.16 + bands.treble * 0.1)
+        : clamp01(gatedVolume * 0.74 + bands.bass * 0.42 + bands.mid * 0.16 + bands.treble * 0.12);
     const transient = silent ? 0 : clamp01((energy - this.previousEnergy) * 7.5);
     const bassRise = silent ? 0 : clamp01((bands.bass - this.previousBass) * 8);
     const centroid = silent ? 0 : this.computeSpectralCentroid(this.frequencyData);
@@ -320,7 +322,7 @@ export class AudioAnalyzer {
 
     this.features = {
       time: now,
-      volume,
+      volume: gatedVolume,
       energy,
       transient,
       centroid,
@@ -372,23 +374,23 @@ export class AudioAnalyzer {
 
     const highpass = this.context.createBiquadFilter();
     highpass.type = 'highpass';
-    highpass.frequency.value = mode === 'room' ? 32 : 24;
+    highpass.frequency.value = mode === 'room' ? 55 : 45;
     highpass.Q.value = 0.72;
 
     const lowShelf = this.context.createBiquadFilter();
     lowShelf.type = 'lowshelf';
     lowShelf.frequency.value = 165;
-    lowShelf.gain.value = mode === 'room' ? 10 : 5;
+    lowShelf.gain.value = mode === 'room' ? 4 : 2;
 
     const compressor = this.context.createDynamicsCompressor();
-    compressor.threshold.value = mode === 'room' ? -48 : -44;
-    compressor.knee.value = 24;
-    compressor.ratio.value = mode === 'room' ? 7 : 5;
-    compressor.attack.value = 0.006;
-    compressor.release.value = 0.18;
+    compressor.threshold.value = mode === 'room' ? -34 : -32;
+    compressor.knee.value = 18;
+    compressor.ratio.value = mode === 'room' ? 3 : 2.5;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.16;
 
     const preamp = this.context.createGain();
-    preamp.gain.value = mode === 'room' ? 3.4 : 2.6;
+    preamp.gain.value = mode === 'room' ? 1.25 : 1.1;
 
     source.connect(highpass);
     highpass.connect(lowShelf);
@@ -402,18 +404,43 @@ export class AudioAnalyzer {
     let sum = 0;
     for (let i = 0; i < buffer.length; i += 1) sum += buffer[i] * buffer[i];
     const raw = Math.sqrt(sum / buffer.length);
-    if (this.sourceState.mode !== 'room-microphone') {
-      return clamp01(raw * (4.2 + this.inputSensitivity * 1.8) * this.inputProfileGain);
+    this.rawRms = raw;
+    const micMode = this.sourceState.mode === 'microphone' || this.sourceState.mode === 'room-microphone';
+    if (!micMode) {
+      return clamp01(raw * this.getDirectSensitivityScale() * this.inputProfileGain);
     }
 
-    const floorRate = raw < this.rmsFloor ? 0.025 : 0.003;
-    const peakRate = raw > this.rmsPeak ? 0.16 : 0.006;
+    const floorRate = raw < this.rmsFloor ? 0.08 : 0.004;
+    const peakRate = raw > this.rmsPeak ? 0.14 : 0.004;
     this.rmsFloor = lerp(this.rmsFloor, raw, floorRate);
-    this.rmsPeak = Math.max(0.012, lerp(this.rmsPeak, raw, peakRate));
-    const floor = Math.min(this.rmsFloor + 0.0015, this.rmsPeak - 0.006);
-    const range = Math.max(0.008, this.rmsPeak - floor);
+    this.rmsPeak = Math.max(0.018, lerp(this.rmsPeak, raw, peakRate));
+    const noiseMargin = this.sourceState.mode === 'room-microphone' ? 0.0045 : 0.0035;
+    const floor = Math.min(this.rmsFloor + noiseMargin, this.rmsPeak - 0.008);
+    const range = Math.max(0.012, this.rmsPeak - floor);
     const normalized = Math.max(0, (raw - floor) / range);
-    return clamp01(Math.pow(normalized, 0.9) * (0.58 + this.inputSensitivity * 0.16));
+    return clamp01(Math.pow(normalized, 0.95) * this.getMicSensitivityScale() * this.inputProfileGain);
+  }
+
+  private getDirectSensitivityScale(): number {
+    return 0.08 + this.inputSensitivity * 0.32;
+  }
+
+  private getMicSensitivityScale(): number {
+    return 0.04 + this.inputSensitivity * 0.055;
+  }
+
+  private getBandSensitivityScale(): number {
+    const micMode = this.sourceState.mode === 'microphone' || this.sourceState.mode === 'room-microphone';
+    return micMode ? 0.05 + this.inputSensitivity * 0.045 : 0.06 + this.inputSensitivity * 0.11;
+  }
+
+  private isSilent(volume: number): boolean {
+    const micMode = this.sourceState.mode === 'microphone' || this.sourceState.mode === 'room-microphone';
+    if (!micMode) return volume < DIRECT_SILENCE_GATE;
+
+    const rawGate = this.rmsFloor + (this.sourceState.mode === 'room-microphone' ? 0.004 : 0.003);
+    const normalizedGate = this.sourceState.mode === 'room-microphone' ? 0.035 : 0.04;
+    return this.rawRms < rawGate || volume < normalizedGate;
   }
 
   private computeBands(data: Uint8Array): FrequencyBands {
@@ -465,8 +492,7 @@ export class AudioAnalyzer {
       const floor = Math.min(this.bandFloors[key] + 0.004, this.bandPeaks[key] - 0.012);
       const range = Math.max(0.018, this.bandPeaks[key] - floor);
       const normalized = (value - floor) / range;
-      const sensitivity = this.sourceState.mode === 'room-microphone' ? 0.78 + this.inputSensitivity * 0.22 : this.inputSensitivity;
-      return clamp01(Math.pow(Math.max(0, normalized) * sensitivity * this.inputProfileGain, 0.86));
+      return clamp01(Math.pow(Math.max(0, normalized) * this.getBandSensitivityScale() * this.inputProfileGain, 0.92));
     };
 
     return {
@@ -499,6 +525,7 @@ export class AudioAnalyzer {
     };
     this.rmsFloor = 0.002;
     this.rmsPeak = 0.06;
+    this.rawRms = 0;
   }
 
   private computeSpectralCentroid(data: Uint8Array): number {

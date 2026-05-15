@@ -43,6 +43,7 @@ input {
 .visual-canvas {
   position: fixed;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
   display: block;
@@ -51,9 +52,8 @@ input {
 
 .artist-title {
   position: fixed;
-  bottom: 11vh;
+  top: 78%;
   left: 50%;
-  z-index: 1;
   width: min(92vw, 980px);
   color: rgba(255, 255, 255, 0.94);
   font-size: clamp(42px, 10vw, 132px);
@@ -66,8 +66,18 @@ input {
   mix-blend-mode: screen;
   transition:
     transform 95ms linear,
+    left 95ms linear,
+    top 95ms linear,
     text-shadow 95ms linear;
   overflow-wrap: anywhere;
+}
+
+.artist-title.above-visuals {
+  z-index: 2;
+}
+
+.artist-title.behind-visuals {
+  z-index: 0;
 }
 
 .lil-gui.root {
@@ -277,7 +287,7 @@ input {
   }
 
   .artist-title {
-    bottom: 19vh;
+    top: 72%;
     font-size: clamp(34px, 15vw, 76px);
   }
 }

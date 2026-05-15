@@ -12,6 +12,12 @@ export interface EngineSettings {
   textGlowColor: string;
   textSize: number;
   textOpacity: number;
+  textX: number;
+  textY: number;
+  textMotionAmount: number;
+  textMotionSpeed: number;
+  textAudioMotion: boolean;
+  textLayer: 'front' | 'back';
   intensity: number;
   speed: number;
   bloom: number;
@@ -29,7 +35,7 @@ export const defaultEngineSettings: EngineSettings = {
   sceneId: 'particle-galaxy',
   beatOnlyMotion: true,
   audioInputId: 'default',
-  audioSensitivity: 1.8,
+  audioSensitivity: 2.5,
   backgroundColor: '#050508',
   primaryColor: '#ff2a87',
   secondaryColor: '#00f2ff',
@@ -38,9 +44,15 @@ export const defaultEngineSettings: EngineSettings = {
   textGlowColor: '#ff2a87',
   textSize: 1,
   textOpacity: 0.94,
+  textX: 50,
+  textY: 78,
+  textMotionAmount: 0,
+  textMotionSpeed: 0.8,
+  textAudioMotion: true,
+  textLayer: 'front',
   intensity: 1,
   speed: 1,
-  bloom: 0.72,
+  bloom: 0.2,
   trails: 0.32,
   glitch: 0,
   rgbShift: 0.38,
