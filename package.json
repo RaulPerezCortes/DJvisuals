@@ -1,0 +1,27 @@
+{
+  "name": "dj-visuals-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "lil-gui": "^0.21.0",
+    "postprocessing": "^6.37.8",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.178.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.178.1",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  }
+}
