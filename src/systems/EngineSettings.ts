@@ -31,7 +31,7 @@ export interface EngineSettings {
 }
 
 export const defaultEngineSettings: EngineSettings = {
-  artistName: 'ARTIST NAME',
+  artistName: 'artist name',
   sceneId: 'particle-galaxy',
   beatOnlyMotion: true,
   audioInputId: 'default',

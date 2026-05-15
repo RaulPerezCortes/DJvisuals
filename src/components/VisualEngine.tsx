@@ -136,7 +136,7 @@ export function VisualEngine() {
           textShadow: `0 0 ${18 + activeFeatures.energy * 56}px ${settings.textGlowColor}`,
         }}
       >
-        {settings.artistName.trim() || 'ARTIST NAME'}
+        {settings.artistName.trim() || 'artist name'}
       </div>
     </main>
   );
